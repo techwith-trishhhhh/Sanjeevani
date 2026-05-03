@@ -1,98 +1,144 @@
-const donorForm = document.getElementById('donorForm');
-const scanBtn = document.getElementById('scanBtn');
-const radarContainer = document.getElementById('radarContainer');
-const scanIcon = document.getElementById('scanIcon');
+/**
+ * SANJEEVANI - Core Interactivity Engine
+ * Merged Logic: Multi-Asset Routing + Geolocation + API Bridge
+ */
 
-// 1. Handle Registration Form Submission
-donorForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
+// --- DOM ELEMENTS ---
+const assetSelect = document.getElementById('asset-type');
+const donorForm = document.getElementById('unifiedRegistryForm');
+const detectLocBtn = document.getElementById('detect-loc');
+const manualLocationInput = document.getElementById('manual-location');
 
-    const formData = {
-        name: document.getElementById('name').value,
-        bloodGroup: document.getElementById('bloodGroup').value,
-        latitude: parseFloat(document.getElementById('lat').value),
-        longitude: parseFloat(document.getElementById('lng').value),
-        isAvailable: true
-    };
+// --- DYNAMIC SECTION MAPPING ---
+const sections = {
+    blood: document.getElementById('blood-fields'),
+    plasma: document.getElementById('plasma-fields'),
+    stem: document.getElementById('stem-fields'),
+    organ: document.getElementById('organ-fields')
+};
 
-    try {
-        const response = await fetch('http://localhost:8080/api/donors', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(formData)
-        });
+// ==================== 1. TOAST NOTIFICATION SYSTEM ====================
+function showToast(message, type = 'success') {
+    const toast = document.createElement('div');
+    toast.className = `fixed bottom-6 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-2xl text-white font-medium shadow-lg z-50 flex items-center gap-2 transition-all duration-400 ${
+        type === 'success' ? 'bg-emerald-600' : 'bg-red-600'
+    }`;
+    toast.innerHTML = `${type === 'success' ? '✅' : '⚠️'} ${message}`;
+    document.body.appendChild(toast);
 
-        if (response.ok) {
-            alert('🚀 Beacon Activated! You are now live on the Sanjeevani network.');
-            donorForm.reset();
-        } else {
-            throw new Error('Server responded with error');
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translate(-50%, 20px)';
+        setTimeout(() => toast.remove(), 400);
+    }, 3000);
+}
+
+// ==================== 2. CONDITIONAL FORM RENDERING ====================
+assetSelect.addEventListener('change', (e) => {
+    const selectedAsset = e.target.value;
+
+    // Hide all specific sections
+    Object.values(sections).forEach(section => {
+        if (section) {
+            section.classList.add('hidden-section');
+            section.classList.remove('section-active');
         }
-    } catch (error) {
-        console.error('Submission error:', error);
-        alert('⚠️ Registration Failed. Please ensure your local server is running at :8080');
+    });
+
+    // Show only the relevant section
+    if (sections[selectedAsset]) {
+        sections[selectedAsset].classList.remove('hidden-section');
+        sections[selectedAsset].classList.add('section-active');
     }
 });
 
-// 2. Handle Radar Scanning
-scanBtn.addEventListener('click', async () => {
-    // UI Loading State
-    scanBtn.disabled = true;
-    scanIcon.classList.add('animate-spin');
-    radarContainer.innerHTML = `
-        <div class="flex flex-col items-center">
-            <div class="radar-pulse mb-8"></div>
-            <p class="text-red-600 font-bold animate-pulse uppercase tracking-widest text-sm">Pinging Local Network...</p>
-        </div>
-    `;
-
-    try {
-        const response = await fetch('http://localhost:8080/api/donors');
-        const donors = await response.json();
-
-        // Small delay for "visual effect"
-        setTimeout(() => {
-            renderDonors(donors);
-            scanBtn.disabled = false;
-            scanIcon.classList.remove('animate-spin');
-        }, 800);
-
-    } catch (error) {
-        console.error('Scan error:', error);
-        radarContainer.innerHTML = `
-            <div class="text-center p-8 bg-red-50 rounded-2xl border border-red-100">
-                <p class="text-red-600 font-bold mb-2">Scan Failed</p>
-                <p class="text-slate-500 text-xs">Could not connect to the API server.</p>
-            </div>
-        `;
-        scanBtn.disabled = false;
-        scanIcon.classList.remove('animate-spin');
-    }
-});
-
-// 3. Render Donor Cards
-function renderDonors(donors) {
-    if (!donors || donors.length === 0) {
-        radarContainer.innerHTML = `<p class="text-slate-400 font-medium italic">Awaiting Radar Scan...</p>`;
+// ==================== 3. GEOLOCATION ENGINE ====================
+async function handleGeolocation() {
+    if (!navigator.geolocation) {
+        showToast("Geolocation is not supported by your browser.", "error");
         return;
     }
 
-    radarContainer.className = "grid grid-cols-1 md:grid-cols-2 gap-4 w-full content-start overflow-y-auto max-h-[600px] pr-2";
-    radarContainer.innerHTML = donors.map((donor, index) => `
-        <div class="donor-card bg-white p-5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow flex items-center gap-4" style="animation-delay: ${index * 0.1}s">
-            <div class="w-14 h-14 bg-red-50 rounded-xl flex items-center justify-center text-red-600 font-black text-xl border border-red-100 shrink-0">
-                ${donor.bloodGroup}
-            </div>
-            <div class="overflow-hidden">
-                <h4 class="font-bold text-slate-900 truncate">${donor.name}</h4>
-                <p class="text-[10px] font-mono text-slate-400 mt-1 uppercase tracking-tighter">
-                    GPS: ${donor.latitude.toFixed(4)}, ${donor.longitude.toFixed(4)}
-                </p>
-                <div class="flex items-center gap-1 mt-2">
-                    <span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
-                    <span class="text-[9px] font-bold text-green-600 uppercase">Available</span>
-                </div>
-            </div>
-        </div>
-    `).join('');
+    detectLocBtn.disabled = true;
+    detectLocBtn.innerHTML = `⌛ Pinging Satellites...`;
+
+    navigator.geolocation.getCurrentPosition(
+        (position) => {
+            const { latitude, longitude } = position.coords;
+            const geoString = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+            
+            // Fill the input
+            manualLocationInput.value = geoString;
+            
+            // UI Update
+            detectLocBtn.disabled = false;
+            detectLocBtn.innerHTML = `✅ Location Captured`;
+            detectLocBtn.classList.add('bg-emerald-50', 'text-emerald-700', 'border-emerald-200');
+            
+            showToast("📍 Coordinates captured successfully!", "success");
+        },
+        (error) => {
+            detectLocBtn.disabled = false;
+            detectLocBtn.innerHTML = `📍 Detect My Location`;
+            
+            let msg = "Failed to get location.";
+            if (error.code === 1) msg = "Location access denied.";
+            else if (error.code === 2) msg = "Location unavailable.";
+            
+            showToast(msg, "error");
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
+    );
 }
+
+detectLocBtn.addEventListener('click', handleGeolocation);
+
+// ==================== 4. FORM SUBMISSION & API BRIDGE ====================
+donorForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    // Collect base data
+    const baseData = {
+        assetType: assetSelect.value,
+        name: donorForm.querySelector('input[placeholder="Jane Doe"]').value,
+        age: donorForm.querySelector('input[placeholder="25"]').value,
+        location: manualLocationInput.value
+    };
+
+    // UI Loading State
+    const submitBtn = donorForm.querySelector('button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = `<span class="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2"></span> Transmitting Beacon...`;
+
+    try {
+        // Construct the full payload based on the active section
+        // In a real-world scenario, you would grab specific fields from the active section here
+        
+        const response = await fetch('https://sanjeevani-am9d.onrender.com/api/donors', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(baseData)
+        });
+
+        if (response.ok) {
+            showToast('🚀 Beacon Activated! Your life-saving asset is now live.', 'success');
+            donorForm.reset();
+            // Reset sections
+            Object.values(sections).forEach(s => s.classList.add('hidden-section'));
+        } else {
+            throw new Error('Server response was not OK');
+        }
+    } catch (error) {
+        console.error('Submission error:', error);
+        showToast('⚠️ Transmission Failed. Check your connection.', 'error');
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
+    }
+});
+
+// Initialize on Load
+document.addEventListener('DOMContentLoaded', () => {
+    console.log("Sanjeevani System Online.");
+});
